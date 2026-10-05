@@ -1,0 +1,423 @@
+<!-- External Dependencies -->
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+    :root {
+        --safari-highlight: #FFD700;
+        --safari-dark: #1e293b;
+        --safari-text: #475569;
+        --safari-glass: rgba(253, 251, 247, 0.85);
+        --safari-glass-border: rgba(255, 215, 0, 0.3);
+    }
+
+    /* Scoped Container for WordPress */
+    .wp-safari-itinerary-container {
+        position: relative; 
+        width: 100%; 
+        height: 700px; /* Adjustable height for your WP layout */
+        max-height: 85vh;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        background: #fdfbf7;
+        overflow: hidden; 
+        border-radius: 12px; /* Rounded corners for embedded look */
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+
+    #safari-map {
+        position: absolute;
+        top: 0; bottom: 0; left: 0; right: 0;
+        width: 100%; height: 100%;
+        z-index: 1;
+    }
+
+    /* Glassmorphism Sidebar */
+    .itinerary-sidebar {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        width: 320px;
+        max-height: calc(100% - 40px);
+        background: var(--safari-glass);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid var(--safari-glass-border);
+        border-radius: 16px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+
+    .itinerary-header {
+        padding: 20px;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+
+    .itinerary-header h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--safari-dark);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .itinerary-list {
+        padding: 16px 16px 30px 16px; 
+        overflow-y: auto;
+        flex-grow: 1;
+    }
+
+    /* Itinerary Cards */
+    .itinerary-card {
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid transparent;
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+    }
+
+    .itinerary-card:hover, .itinerary-card.active {
+        background: #fff;
+        border-color: var(--safari-highlight);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(255, 215, 0, 0.15);
+    }
+
+    .itinerary-day {
+        font-size: 11px;
+        font-weight: 700;
+        color: #b49700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+    }
+
+    .itinerary-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--safari-dark);
+        margin-bottom: 4px;
+        line-height: 1.3;
+    }
+
+    .itinerary-lodge {
+        font-size: 12px;
+        color: var(--safari-text);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* Marker & Popup Styling */
+    .custom-marker {
+        cursor: pointer;
+        transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .custom-marker:hover {
+        transform: scale(1.15);
+        z-index: 999 !important;
+    }
+
+    .mapboxgl-popup-content {
+        border-radius: 12px !important;
+        padding: 16px !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
+        border: 1px solid var(--safari-glass-border);
+        min-width: 200px;
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+        .itinerary-sidebar {
+            top: auto;
+            bottom: 0;
+            left: 0;
+            width: 100%; /* Changed from 100vw to fit within WP container */
+            border-radius: 20px 20px 0 0;
+            max-height: 50%; 
+            padding-bottom: env(safe-area-inset-bottom, 10px);
+            border-bottom: none;
+            border-left: none;
+            border-right: none;
+        }
+        .mapboxgl-ctrl-top-right {
+            top: 10px !important;
+        }
+    }
+</style>
+
+<!-- App Structure -->
+<div class="wp-safari-itinerary-container">
+    <div id="safari-map"></div>
+    <div class="itinerary-sidebar">
+        <div class="itinerary-header">
+            <h3>Diani Beach i Masajska Mara (przelot)</h3>
+        </div>
+        <div class="itinerary-list" id="itinerary-list"></div>
+    </div>
+</div>
+
+<!-- Map Logic -->
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+<script>
+    (function() {
+        const token = '';
+        mapboxgl.accessToken = token;
+
+        const itineraryData = [
+            { id: 'start', dayString: 'Start', title: 'Wyjazd', lodge: 'Diani Beach (Lądowisko Ukunda)', coords: [39.5539, -4.3039] },
+            { id: 'day1_flight', isWaypoint: true, title: 'Przelot do Mary', coords: [35.2500, -1.3500] },
+            { id: 'day1', dayString: 'Dzień 1', title: 'Mara Intrepids', lodge: 'Mara Intrepids Tented Camp', coords: [35.2447, -1.3653] },
+            { id: 'wp_talek_loop_n', isWaypoint: true, title: 'Pętla rezerwatu Talek - Północ', coords: [35.1500, -1.3800] },
+            { id: 'wp_talek_loop_s', isWaypoint: true, title: 'Pętla rezerwatu Talek - Południe', coords: [35.1400, -1.4200] },
+            { id: 'day2_wp_triangle_n', isWaypoint: true, title: 'Pętla Trójkąta Mara - Północ', coords: [34.9100, -1.3800] },
+            { id: 'day2', dayString: 'Dzień 2', title: 'Trójkąt Mara', lodge: 'Rezerwat Mara Triangle', coords: [34.9067, -1.4067] },
+            { id: 'day2_wp_triangle_s', isWaypoint: true, title: 'Pętla Trójkąta Mara - Południe', coords: [34.9200, -1.4400] },
+            { id: 'day3_flight', isWaypoint: true, title: 'Przelot na wybrzeże', coords: [35.2500, -1.3500] },
+            { id: 'day3', dayString: 'Dzień 3', title: 'Powrót', lodge: 'Diani Beach (Lądowisko Ukunda)', coords: [39.5539, -4.3039] }
+        ];
+
+        const map = new mapboxgl.Map({
+            container: 'safari-map',
+            style: 'mapbox://styles/mapbox/standard-satellite',
+            center: [37.4, -2.85], 
+            zoom: 6,
+            pitch: 60,
+            cooperativeGestures: true
+        });
+
+        map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+        function createPinElement() {
+            const el = document.createElement('div');
+            el.className = 'custom-marker';
+            el.innerHTML = `
+                <svg width="32" height="42" viewBox="0 0 27 41" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3)); display: block;">
+                    <path d="M13.5 0C6.04 0 0 6.04 0 13.5C0 23.6 13.5 41 13.5 41C13.5 41 27 23.6 27 13.5C27 6.04 20.96 0 13.5 0ZM13.5 18.5C10.74 18.5 8.5 16.26 8.5 13.5C8.5 10.74 10.74 8.5 13.5 8.5C16.26 8.5 18.5 10.74 18.5 13.5C18.5 16.26 16.26 18.5 13.5 18.5Z" fill="#FFD700"/>
+                </svg>
+            `;
+            return el;
+        }
+
+        const markers = {};
+        const listContainer = document.getElementById('itinerary-list');
+        const routeCoords = [];
+        const routeIds = [];
+
+        itineraryData.forEach((stop) => {
+            routeCoords.push(stop.coords);
+            routeIds.push(stop.id);
+
+            if (stop.isWaypoint) return;
+
+            const popup = new mapboxgl.Popup({ offset: 35, closeButton: false }).setHTML(
+                `<div class="itinerary-day">${stop.dayString}</div>
+                 <div class="itinerary-title">${stop.title}</div>
+                 <div class="itinerary-lodge" style="margin-top: 4px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    ${stop.lodge}
+                 </div>`
+            );
+
+            const marker = new mapboxgl.Marker({ element: createPinElement(), anchor: 'bottom' })
+                .setLngLat(stop.coords)
+                .setPopup(popup)
+                .addTo(map);
+            
+            markers[stop.id] = marker;
+
+            const card = document.createElement('div');
+            card.className = 'itinerary-card';
+            card.innerHTML = `
+                <div class="itinerary-day">${stop.dayString}</div>
+                <div class="itinerary-title">${stop.title}</div>
+                <div class="itinerary-lodge">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b49700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="min-width: 14px;"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    <span>${stop.lodge}</span>
+                </div>
+            `;
+
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.itinerary-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+
+                map.flyTo({
+                    center: stop.coords,
+                    zoom: 12,
+                    pitch: 65,
+                    speed: 1.2,
+                    essential: true
+                });
+
+                marker.togglePopup();
+            });
+
+            listContainer.appendChild(card);
+        });
+
+        async function getDirectionsRoute(coords, ids) {
+            let fullPath = [];
+            const segmentPromises = [];
+            const isFlightSegment = [];
+
+            for (let i = 0; i < coords.length - 1; i++) {
+                const p1 = coords[i];
+                const p2 = coords[i+1];
+                const flightLeg = (ids && (String(ids[i]).includes('flight') || String(ids[i+1]).includes('flight')));
+                isFlightSegment.push(flightLeg);
+
+                if (flightLeg) {
+                    segmentPromises.push(Promise.resolve(null));
+                    continue;
+                }
+
+                const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${p1[0]},${p1[1]};${p2[0]},${p2[1]}?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`;
+                
+                segmentPromises.push(
+                    fetch(url)
+                        .then(response => response.json())
+                        .catch(err => null)
+                );
+            }
+
+            const results = await Promise.all(segmentPromises);
+
+            for (let i = 0; i < results.length; i++) {
+                const data = results[i];
+                if (!isFlightSegment[i] && data && data.routes && data.routes.length > 0) {
+                    fullPath.push(...data.routes[0].geometry.coordinates);
+                } else {
+                    fullPath.push(coords[i], coords[i+1]);
+                }
+            }
+            return fullPath;
+        }
+
+        map.on('load', async () => {
+            try {
+                if (!map.getSource('mapbox-dem')) {
+                    map.addSource('mapbox-dem', {
+                        'type': 'raster-dem',
+                        'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+                        'tileSize': 512,
+                        'maxzoom': 14
+                    });
+                }
+                map.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+            } catch (e) { /* terrain optional, continue without it */ }
+
+            const bounds = new mapboxgl.LngLatBounds();
+            itineraryData.forEach(stop => bounds.extend(stop.coords));
+            
+            const isMobile = window.innerWidth <= 768;
+            map.fitBounds(bounds, { 
+                padding: isMobile ? {top: 50, bottom: 400, left: 20, right: 20} : {top: 100, bottom: 100, left: 360, right: 50},
+                maxZoom: 9
+            });
+
+            let detailedRouteCoords;
+            try {
+                detailedRouteCoords = await getDirectionsRoute(routeCoords, routeIds);
+                if (!detailedRouteCoords || detailedRouteCoords.length < 2) {
+                    detailedRouteCoords = routeCoords;
+                }
+            } catch (e) {
+                detailedRouteCoords = routeCoords;
+            }
+
+            if (!map.getSource('route')) {
+                map.addSource('route', {
+                    'type': 'geojson',
+                    'data': {
+                        'type': 'Feature',
+                        'properties': {},
+                        'geometry': {
+                            'type': 'LineString',
+                            'coordinates': detailedRouteCoords
+                        }
+                    }
+                });
+            } else {
+                map.getSource('route').setData({
+                    'type': 'Feature',
+                    'properties': {},
+                    'geometry': {
+                        'type': 'LineString',
+                        'coordinates': detailedRouteCoords
+                    }
+                });
+            }
+
+            if (!map.getLayer('route-line-background')) {
+                map.addLayer({
+                    'id': 'route-line-background',
+                    'type': 'line',
+                    'source': 'route',
+                    'layout': {
+                        'line-join': 'round',
+                        'line-cap': 'round'
+                    },
+                    'paint': {
+                        'line-color': '#FFD700', 
+                        'line-width': 3,
+                        'line-opacity': 0.3
+                    }
+                });
+            }
+
+            if (!map.getLayer('route-line-dashed')) {
+                map.addLayer({
+                    'id': 'route-line-dashed',
+                    'type': 'line',
+                    'source': 'route',
+                    'layout': {
+                        'line-join': 'round',
+                        'line-cap': 'round'
+                    },
+                    'paint': {
+                        'line-color': '#FFD700', 
+                        'line-width': 4,
+                        'line-dasharray': [0, 4, 3]
+                    }
+                });
+            }
+
+            const dashArraySequence = [
+                [0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5],
+                [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5],
+                [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2],
+                [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]
+            ];
+
+            let step = 0;
+
+            function animateDashArray(timestamp) {
+                const newStep = parseInt((timestamp / 50) % dashArraySequence.length);
+
+                if (newStep !== step) {
+                    try {
+                        map.setPaintProperty(
+                            'route-line-dashed',
+                            'line-dasharray',
+                            dashArraySequence[step]
+                        );
+                    } catch (e) { /* layer not ready yet, skip this frame */ }
+                    step = newStep;
+                }
+
+                requestAnimationFrame(animateDashArray);
+            }
+
+            requestAnimationFrame(animateDashArray);
+        });
+
+        window.addEventListener('resize', () => map.resize());
+    })();
+</script>
